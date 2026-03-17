@@ -1,0 +1,47 @@
+{
+  "invoice_number": "2024-0892",
+  "date": "1503-04-24",
+  "seller": {
+    "name": "TechSolutions GmbH",
+    "street": "Musterstrasse 42",
+    "zip_code": "10115 Berlin",
+    "city": "Berlin",
+    "vat_id": "DE123456789"
+  },
+  "buyer": {
+    "name": "Digital Services AG",
+    "street": "Hauptweg 7",
+    "zip_code": "80331 Munchen",
+    "city": "Munchen",
+    "vat_id": "DE987654321"
+  },
+  "items": [
+    {
+      "pos": 1,
+      "description": "Cloud Hosting Premium (Jan-Mar 2024)",
+      "quantity": 3.0,
+      "unit_price": 450.0,
+      "total": 1350.0
+    },
+    {
+      "pos": 2,
+      "description": "SSL-Zertifikat Erneuerung",
+      "quantity": 1.0,
+      "unit_price": 89.5,
+      "total": 89.5
+    },
+    {
+      "pos": 3,
+      "description": "Technischer Support (15 Stunden)",
+      "quantity": 15.0,
+      "unit_price": 95.0,
+      "total": 1425.0
+    }
+  ],
+  "net_amount": 2864.5,
+  "vat_rate": 19.0,
+  "vat_amount": 544.26,
+  "gross_amount": 3408.76,
+  "payment_terms": "30 Tage",
+  "iban": "DE89 3704 0044 0532 0130 00"
+}

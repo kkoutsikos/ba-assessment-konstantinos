@@ -1,35 +1,95 @@
 import os
+import json
+from pathlib import Path
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import ValidationError
+from langchain_ollama import ChatOllama
 from models import Invoice
 
-def run_extraction(raw_text: str, max_attempts: int = 3):
-    # Αρχικοποίηση μοντέλου με μηδενικό temperature για σταθερότητα
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0)
+load_dotenv()
+
+def save_to_json(invoice_data: Invoice, base_path: str = "section-1"):
+    # Δημιουργία φακέλου εξόδου για τα εξαχθέντα δεδομένα
+    output_dir = Path(base_path) / "extracted_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Ονοματοδοσία βάσει του αριθμού τιμολογίου για αποφυγή επικαλύψεων
+    file_name = f"invoice_{invoice_data.invoice_number}.json"
+    file_path = output_dir / file_name
+    
+    # Εγγραφή του αντικειμένου σε μορφή JSON string
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(invoice_data.model_dump_json(indent=2))
+    
+    print(f"SUCCESS: JSON output saved to {file_path}")
+
+
+def print_validation_report(invoice: Invoice = None, error: str = None):
+    print("\n" + "="*50)
+    print("      EXTRACTION VALIDATION REPORT")
+    print("="*50)
+    if invoice:
+        print(f"STATUS:       PASS")
+        print(f"INVOICE NO:   {invoice.invoice_number}")
+        print(f"SELLER:       {invoice.seller.name}")
+        print(f"NET AMOUNT:   {invoice.net_amount} EUR")
+        print(f"GROSS AMOUNT: {invoice.gross_amount} EUR")
+        print(f"ITEMS COUNT:  {len(invoice.items)}")
+    else:
+        print(f"STATUS:       FAIL")
+        print(f"ERROR:        {error}")
+    print("="*50 + "\n")
+
+def extract_invoice(text: str, max_retries: int = 3):
+    llm = ChatOllama(model="llama3.1", temperature=0)
     structured_llm = llm.with_structured_output(Invoice)
     
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "You are a precise data extraction agent. Convert invoice text to JSON."),
-        ("human", "Extract from this text:\n{input}\n\n{feedback}")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a professional auditor. Extract invoice data into JSON. Ensure all math is double-checked."),
+        ("human", "Text: {text}\n\nFeedback from previous attempt: {feedback}")
     ])
     
-    current_feedback = ""
-    for i in range(max_attempts):
+    feedback = "None"
+    for attempt in range(max_retries):
         try:
-            chain = prompt_template | structured_llm
-            invoice_data = chain.invoke({"input": raw_text, "feedback": current_feedback})
-            print("--- VALIDATION REPORT: PASS ---")
-            print(f"Successfully processed Invoice: {invoice_data.invoice_number}")
-            return invoice_data
+            chain = prompt | structured_llm
+            result = chain.invoke({"text": text, "feedback": feedback})
+            print_validation_report(invoice=result)
+            return result
         except Exception as e:
-            print(f"Attempt {i+1} failed: {str(e)}")
-            current_feedback = f"Your previous JSON was invalid. Error: {str(e)}. Please recalculate the totals and fix the fields."
+            feedback = str(e)
+            print(f"Attempt {attempt+1} failed validation. Error details: {str(e)}")
     
-    print("--- VALIDATION REPORT: FAIL ---")
+    print_validation_report(error="Max retries reached without valid output.")
     return None
 
 if __name__ == "__main__":
-    # Το κείμενο εισόδου από τις προδιαγραφές [cite: 17-35]
-    sample_text = """Rechnung Nr. 2024-0892...""" 
-    run_extraction(sample_text)
+    
+    raw_inputs = [
+        """Rechnung Nr. 2024-0892
+Datum: 15.03.2024
+Von:
+TechSolutions GmbH
+Musterstrasse 42
+10115 Berlin
+USt-IdNr.: DE123456789
+An:
+Digital Services AG
+Hauptweg 7
+80331 Munchen
+USt-IdNr.: DE987654321
+Pos. 1: Cloud Hosting Premium (Jan-Mar 2024) - 3 x 450,00 EUR = 1.350,00 EUR
+Pos. 2: SSL-Zertifikat Erneuerung - 1 x 89,50 EUR = 89,50 EUR
+Pos. 3: Technischer Support (15 Stunden) - 15 x 95,00 EUR = 1.425,00 EUR
+Nettobetrag: 2.864,50 EUR
+USt. 19%: 544,26 EUR
+Bruttobetrag: 3.408,76 EUR
+Zahlungsziel: 30 Tage
+Bankverbindung: IBAN DE89 3704 0044 0532 0130 00""" 
+    ]
+
+    for raw_data in raw_inputs:
+        extracted_invoice = extract_invoice(raw_data)
+        if extracted_invoice:
+            save_to_json(extracted_invoice)
