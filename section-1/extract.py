@@ -48,8 +48,8 @@ def extract_invoice(text: str, max_retries: int = 3, provider: str = "gemini"):
         llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
     elif provider == "ollama":
         llm = ChatOllama(model="llama3.1", temperature=0)
-    elif provider == "gemini":
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+    #lif provider == "gemini":
+        #lm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
     else:
         raise ValueError(f"Μη υποστηριζόμενος provider: {provider}. Επίλεξε 'ollama', 'groq', ή 'gemini'.")
 

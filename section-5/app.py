@@ -41,42 +41,72 @@ def get_all_invoices():
 
 @app.post("/invoices/extract")
 def extract_invoice_endpoint(request: ExtractRequest):
-    result = extract.extract_invoice(request.text)
+    # Χρήση groq για να αποφύγουμε τα quota limits της Google
+    result = extract.extract_invoice(request.text, provider="groq")
     
-    if result is None:
+    if result is None or not request.text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
-            detail="LLM failed to produce valid JSON after maximum retries."
+            detail="Could not extract data. Text is empty or invalid."
         )
     
+    # Μετατροπή σε dict
     extracted_dict = result.model_dump()
     
-    # Alignment: Ο Agent περιμένει πεδίο 'id', ενώ το extraction βγάζει 'invoice_number'
-    if "invoice_number" in extracted_dict and "id" not in extracted_dict:
-        extracted_dict["id"] = extracted_dict["invoice_number"]
-        
-    INMEMORY_DB.append(extracted_dict)
+    # --- ΓΕΦΥΡΑ ΓΙΑ ΤΟΝ AGENT (ΣΩΣΤΑ ΟΝΟΜΑΤΑ ΜΕΤΑΒΛΗΤΩΝ) ---
+    formatted_for_agent = {
+        "id": extracted_dict.get("invoice_number"),
+        "customer": extracted_dict.get("seller_name"), # Αντιστοίχιση για search_invoices
+        "date": extracted_dict.get("invoice_date"),
+        "net_total": extracted_dict.get("net_amount"),
+        "gross_total": extracted_dict.get("gross_amount"),
+        "status": "extracted"
+    }
+    
+    # Προσθήκη στην κοινή βάση δεδομένων
+    INMEMORY_DB.append(formatted_for_agent)
+    
     return extracted_dict
 
 @app.post("/invoices/transform")
 def transform_invoices_endpoint(request: TransformRequest):
     result = transformer.transform(request.records)
     
+    # Χειρισμός σφαλμάτων validation
     if result.get("validation_errors"):
+        serializable_errors = []
+        for error in result["validation_errors"]:
+            clean_error = {
+                "invoice_number": error.get("invoice_number", "Unknown"),
+                "error_message": error.get("error_message", "Validation Failed"),
+                "details": str(error.get("details", "")) # Μετατροπή ValueError σε string
+            }
+            serializable_errors.append(clean_error)
+
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
-            detail=result["validation_errors"]
+            detail=serializable_errors
         )
     
-    # Sync: Προσθήκη των επιτυχημένων μετασχηματισμών στη μνήμη του Agent
-    for invoice in result.get("successful_transformations", []):
-        # Alignment για τον Agent
-        if "invoiceNumber" in invoice:
-            invoice["id"] = invoice["invoiceNumber"]
-            invoice["customer"] = invoice.get("buyer", {}).get("name", "Unknown")
-            invoice["gross_total"] = invoice.get("totals", {}).get("grossAmount", 0)
-        
-        INMEMORY_DB.append(invoice)
+    # Έλεγχος αν υπάρχουν επιτυχείς μετασχηματισμοί
+    success_list = result.get("successful_transformations", [])
+    if not success_list:
+         raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+            detail="No valid invoices found in the provided records."
+        )
+    
+    # --- ΓΕΦΥΡΑ ΓΙΑ ΤΟΝ AGENT ---
+    for inv in success_list:
+        formatted_inv = {
+            "id": inv["invoiceNumber"],
+            "customer": inv.get("buyer", {}).get("name", "Unknown"), # Buyer = Customer
+            "date": inv["issueDate"],
+            "net_total": inv.get("totals", {}).get("netAmount"),
+            "gross_total": inv.get("totals", {}).get("grossAmount"),
+            "status": "transformed"
+        }
+        INMEMORY_DB.append(formatted_inv)
         
     return result
 
