@@ -102,7 +102,7 @@ Bankverbindung: IBAN DE89 3704 0044 0532 0130 00"""
     ]
 
     for raw_data in raw_inputs:
-        # Τρέχουμε πλέον με το Gemini για να είμαστε καλυμμένοι με την άσκηση
-        extracted_invoice = extract_invoice(raw_data, provider="gemini")
+        
+        extracted_invoice = extract_invoice(raw_data, provider="groq")
         if extracted_invoice:
             save_to_json(extracted_invoice)
