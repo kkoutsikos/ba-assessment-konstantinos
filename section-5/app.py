@@ -41,9 +41,6 @@ def get_all_invoices():
 
 @app.post("/invoices/extract")
 def extract_invoice_endpoint(request: ExtractRequest):
-    """
-    Accepts raw invoice text, uses LangChain LLM extraction, validates with Pydantic.
-    """
     result = extract.extract_invoice(request.text)
     
     if result is None:
@@ -52,25 +49,34 @@ def extract_invoice_endpoint(request: ExtractRequest):
             detail="LLM failed to produce valid JSON after maximum retries."
         )
     
-    
     extracted_dict = result.model_dump()
-    INMEMORY_DB.append(extracted_dict)
     
+    # Alignment: Ο Agent περιμένει πεδίο 'id', ενώ το extraction βγάζει 'invoice_number'
+    if "invoice_number" in extracted_dict and "id" not in extracted_dict:
+        extracted_dict["id"] = extracted_dict["invoice_number"]
+        
+    INMEMORY_DB.append(extracted_dict)
     return extracted_dict
 
 @app.post("/invoices/transform")
 def transform_invoices_endpoint(request: TransformRequest):
-    """
-    Transforms System A flat records to System B nested format using actual Section 3 logic.
-    """
     result = transformer.transform(request.records)
     
-    # Εάν υπάρξουν validation errors κατά τον μετασχηματισμό, επιστρέφουμε HTTP 422
     if result.get("validation_errors"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
             detail=result["validation_errors"]
         )
+    
+    # Sync: Προσθήκη των επιτυχημένων μετασχηματισμών στη μνήμη του Agent
+    for invoice in result.get("successful_transformations", []):
+        # Alignment για τον Agent
+        if "invoiceNumber" in invoice:
+            invoice["id"] = invoice["invoiceNumber"]
+            invoice["customer"] = invoice.get("buyer", {}).get("name", "Unknown")
+            invoice["gross_total"] = invoice.get("totals", {}).get("grossAmount", 0)
+        
+        INMEMORY_DB.append(invoice)
         
     return result
 

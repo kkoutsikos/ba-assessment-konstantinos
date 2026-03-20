@@ -10,6 +10,7 @@ from langchain_groq import ChatGroq # Αλλαγή σε Groq για αξιοπι
 from tools import agent_tools
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -22,7 +23,15 @@ llm_with_tools = llm.bind_tools(agent_tools)
 
 def chatbot_node(state: State):
     
-    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+    processed_messages = []
+    for msg in state["messages"]:
+        if hasattr(msg, "tool_call_id") and not isinstance(msg.content, str):
+            # Μετατροπή του list/dict σε string JSON
+            msg.content = json.dumps(msg.content)
+        processed_messages.append(msg)
+    
+    response = llm_with_tools.invoke(processed_messages)
+    return {"messages": [response]}
 
 # Graph
 graph_builder = StateGraph(State)
