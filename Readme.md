@@ -33,3 +33,46 @@ Create a virtual environment and install the required packages:
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+### 4. Running the Application
+**Locally via Uvicorn:**
+```bash
+uvicorn section-5.main:app --reload
+```
+Access the Swagger UI at: http://127.0.0.1:8000/docs
+
+**Via Docker:**
+```bash
+docker build -t ai-invoice-app .
+docker run -p 8000:8000 --env-file .env ai-invoice-app
+```
+
+## LLM Provider Choice
+
+Initially, Google's Gemini was considered for the extraction and agent logic. However, during extensive integration testing, strict free-tier rate limits were encountered (`429 RESOURCE_EXHAUSTED`). 
+
+To ensure a robust, production-like experience without quota bottlenecks, the provider was switched to **Groq** (using Llama-3 models). 
+
+**Why Groq?**
+1. **Speed:** Lightning-fast inference, which is crucial for synchronous API endpoints like `/extract`.
+2. **Reliability:** Avoided the frequent quota exhaustion seen in other free tiers.
+3. **JSON Capabilities:** Excellent at adhering to strict Pydantic schemas for structured data extraction.
+
+## Assumptions Made
+
+During the development of this middleware, the following assumptions were made:
+
+1. **Unified Schema Mapping:** The Agent (Section 2) searches for a generic `customer` field. I assumed that for extracted unstructured invoices, the "Seller" acts as the primary entity, whereas for transformed legacy records (System A), the "Buyer" is the mapped entity. Both are routed to the `customer` key in the database so the Agent can query them seamlessly.
+2. **In-Memory Storage:** `INMEMORY_DB` is implemented as a simple Python list. I assumed data persistence across server restarts was not required for the scope of this assessment.
+3. **Currency:** The system assumes all monetary values are in a single, unified currency (or currency conversion is handled upstream), as the agent currently aggregates raw numbers without currency conversion logic.
+4. **Error Serialization:** Pydantic `ValueError` objects cannot be natively converted to JSON by FastAPI. I assumed that converting the inner error details to standard strings before raising the `HTTP 422` exception is the optimal way to inform the client without causing a `500 Internal Server Error`.
+
+## Future Improvements
+
+If given more time to expand this project for a true production environment, I would implement:
+
+1. **Persistent Database:** Replace the in-memory list with a real database like PostgreSQL (with SQLAlchemy) for transactional data, and Pinecone or Milvus (Vector DB) for semantic search over invoice descriptions.
+2. **Authentication & Security:** Add API Key validation or JWT-based authentication for the FastAPI endpoints to secure sensitive financial data.
+3. **Robust Retry Logic:** Implement `Tenacity` for automatic retries with exponential backoff on LLM API calls, guarding against transient network failures.
+4. **Asynchronous Processing:** Move the `/extract` endpoint to a background task queue (e.g., Celery or FastAPI BackgroundTasks) with webhooks, preventing HTTP timeouts for extremely large invoice texts.
+5. **Frontend Dashboard:** Build a React or Streamlit UI for users to upload PDF invoices (incorporating OCR before the LLM step) and chat with the Agent visually.
