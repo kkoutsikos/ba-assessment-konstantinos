@@ -47,6 +47,18 @@ docker build -t ai-invoice-app .
 docker run -p 8000:8000 --env-file .env ai-invoice-app
 ```
 
+### 3. Environment Variables
+Create a `.env` file in the root directory. You will need an API key for the LLM provider:
+
+```env
+# Required for Section 1 (Extraction) & Section 2 (Agent)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Optional: For LangSmith tracing
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langchain_key
+```
+
 ## LLM Provider Choice
 
 Initially, Google's Gemini was considered for the extraction and agent logic. However, during extensive integration testing, strict free-tier rate limits were encountered (`429 RESOURCE_EXHAUSTED`). 
