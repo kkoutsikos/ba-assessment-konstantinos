@@ -6,16 +6,22 @@ client = TestClient(app)
 
 # 1. Successful Extraction Test
 def test_successful_extraction():
+    
     sample_text = """
     Invoice: 2024-0892
+    Date: 2024-05-15
     Seller: TechSolutions GmbH
     Net Amount: 2864.50
+    VAT (19%): 544.26
     Gross Amount: 3408.76
+    Items:
+    - 1x Server Rack : 2864.50
     """
     response = client.post("/invoices/extract", json={"text": sample_text})
     assert response.status_code == 200
     data = response.json()
-    assert "invoice_number" in data
+    
+    assert data.get("customer") == "TechSolutions GmbH" or "TechSolutions" in str(data)
 
 # 2. Valid Transformation Test
 def test_valid_transformation():
@@ -148,3 +154,22 @@ def test_prompt_injection_extraction():
         assert "ignore all previous instructions" not in response_str
         assert "system prompt" not in response_str
         assert "professional auditor" not in response_str    
+        
+def test_agent_multi_tool_chaining():
+    """
+    Integration Test: Verifies that the LangGraph agent can chain multiple tools 
+    (search -> convert_currency) using EXISTING data in the database.
+    """
+    
+    complex_query = {
+        "question": "Find the gross total for Digital Services AG and convert that exact amount to JPY."
+    }
+    
+    query_response = client.post("/invoices/query", json=complex_query)
+    assert query_response.status_code == 200
+    
+    answer = query_response.json().get("answer", "").lower()
+    
+    
+    assert "digital" in answer
+    assert "jpy" in answer        

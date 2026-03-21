@@ -8,6 +8,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver # Προσθήκη μνήμης
 from langchain_groq import ChatGroq # Αλλαγή σε Groq για αξιοπιστία
 from tools import agent_tools
+from langchain_core.messages import SystemMessage
 import os
 from dotenv import load_dotenv
 import json
@@ -21,16 +22,30 @@ class State(TypedDict):
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 llm_with_tools = llm.bind_tools(agent_tools)
 
+SYSTEM_PROMPT = """You are a precise financial AI agent. 
+IMPORTANT RULES FOR TOOL USAGE:
+1. NEVER call multiple tools at once if they depend on each other.
+2. EXECUTE TOOLS STRICTLY ONE AT A TIME. 
+3. NEVER guess, hallucinate, or invent arguments (like IDs or VAT numbers) for a tool. 
+4. If you need data from Tool A to use in Tool B, you MUST call Tool A first, wait for the actual result, and only then call Tool B using the real data.
+"""
+
 def chatbot_node(state: State):
-    
     processed_messages = []
+    
+    # Βάζουμε το System Prompt στην αρχή της μνήμης (αν δεν υπάρχει ήδη)
+    if not any(isinstance(m, SystemMessage) for m in state["messages"]):
+        processed_messages.append(SystemMessage(content=SYSTEM_PROMPT))
+        
     for msg in state["messages"]:
         if hasattr(msg, "tool_call_id") and not isinstance(msg.content, str):
-            # Μετατροπή του list/dict σε string JSON
             msg.content = json.dumps(msg.content)
         processed_messages.append(msg)
     
-    response = llm_with_tools.invoke(processed_messages)
+    # Προσθήκη παραμέτρου (αν υποστηρίζεται από το ChatGroq) για να αποτρέψει τις παράλληλες κλήσεις
+    llm_with_tools_strict = llm.bind_tools(agent_tools, parallel_tool_calls=False)
+    
+    response = llm_with_tools_strict.invoke(processed_messages)
     return {"messages": [response]}
 
 # Graph
