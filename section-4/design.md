@@ -1,10 +1,55 @@
 ## 1. Architecture
 
-The system follows an Event-Driven Microservices architecture to ensure high availability and loose coupling. Invoices are ingested via an Ingestion Layer (S3 buckets or Email Listeners) and placed into a Message Queue (e.g., RabbitMQ or Amazon SQS). Worker Services then consume these messages to perform OCR and LLM-based extraction, storing the results in a Relational Database (PostgreSQL) while exposing them through a REST API (FastAPI) for downstream consumption.
+The architecture consists of an Ingestion Layer (Email/API gateways) that feeds raw documents into an Object Store (like AWS S3) and triggers an event queue (e.g., RabbitMQ or AWS SQS). A set of asynchronous worker nodes picks up these events, performs OCR for images/PDFs, and passes the extracted text to the LLM Extraction module. The resulting JSON is then evaluated by a Rules Engine (using Pydantic); strictly valid records are saved directly to a relational database (e.g., PostgreSQL), while failures are routed to a separate queue. Finally, a FastAPI backend exposes the stored, validated data to downstream systems and internal dashboards.
 
+======================= DATA PIPELINE (ETL) =======================
+[Ingestion: Emails, PDFs, API]
+             |
+             v
+    [Object Store (S3)] ---> (Event) ---> [Message Queue (SQS)]
+                                                  |
+                                                  v
+                                       [Async Workers (Celery)]
+                                       1. Document OCR
+                                       2. LLM Data Extraction
+                                                  |
+                                                  v
+                                      [Rules Engine (Pydantic)]
+                                       /                     \
+                                 (Valid)                 (Invalid)
+                                   /                         \
+                                  v                           v
+                        [ DATABASE / DB STATE ]         [Review Queue]
+                                  ^                           |
+                                  |                           v
+======================== API & AI AGENT ===========================
+                                  +------------------[HITL Dashboard]
+                                  |
+                   +--------------+--------------+
+                   | FastAPI Backend (/query)    |
+                   +--------------+--------------+
+                                  |
+                     [User Query + thread_id]
+                                  |
+                                  v
+                       +----------------------+
+       +-------------> |   Node: "chatbot"    | <-------------+
+       |               | (LLM bound to tools) |               |
+       |               +----------------------+               |
+[MemorySaver]            |                  |                 |
+(Checkpointer)           | END       (tools_condition)        |
+       |                 |                  |                 |
+       +-----------------+                  v                 |
+                         |       +----------------------+     |
+                         |       |    Node: "tools"     | ----+
+                         |       | (ToolNode execution) |
+                         |       +----------------------+
+                         |                  |
+                         v                  v
+                 [Final Response]     (Reads from DB)
 ## 2. Reliability
 
-To handle the 5% failure rate, I would implement a Human-in-the-Loop (HITL) workflow triggered by automated Confidence Scoring. If the LLM extraction fails Pydantic validation (e.g., math mismatches) or returns a low confidence score, the record is flagged and routed to a Verification Dashboard. This allows human reviewers to manually correct anomalies without halting the entire pipeline, ensuring that only 100% validated data reaches the final database.
+To prevent the 5% failure rate from blocking the pipeline, the extraction and validation steps must run asynchronously using a message broker and background workers (e.g., Celery). When the validation engine detects anomalies, hallucinated fields, or mathematical mismatches, the system routes the document and its raw output to a dedicated "Review Queue" rather than halting the process. A Human-In-The-Loop (HITL) dashboard then allows operators to view the original document side-by-side with the flagged data, manually correct the errors, and commit the finalized record to the database.
 
 ## 3. Cost
 
