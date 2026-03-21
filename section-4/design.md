@@ -1,54 +1,68 @@
 ## 1. Architecture
 
 The architecture consists of an Ingestion Layer (Email/API gateways) that feeds raw documents into an Object Store (like AWS S3) and triggers an event queue (e.g., RabbitMQ or AWS SQS). A set of asynchronous worker nodes picks up these events, performs OCR for images/PDFs, and passes the extracted text to the LLM Extraction module. The resulting JSON is then evaluated by a Rules Engine (using Pydantic); strictly valid records are saved directly to a relational database (e.g., PostgreSQL), while failures are routed to a separate queue. Finally, a FastAPI backend exposes the stored, validated data to downstream systems and internal dashboards.
+# Section 4: System Design & Critical Thinking
+
+## 1. Architecture
+The architecture consists of an Ingestion Layer (Email/API gateways) that feeds raw documents into an Object Store (like AWS S3) and triggers an event queue (e.g., RabbitMQ or AWS SQS). A set of asynchronous worker nodes picks up these events, performs OCR for images/PDFs, and passes the extracted text to the LLM Extraction module. The resulting JSON is evaluated by a Rules Engine (using Pydantic); valid records are saved to a relational database, while failures are routed to a separate queue. Finally, a FastAPI backend serves as the interface for a LangGraph-based conversational agent, which is fortified with Input and Output Guardrail nodes to prevent prompt injections and filter hallucinated or sensitive responses.
+
 ```text
 ======================= DATA PIPELINE (ETL) =======================
-[Ingestion: Emails, PDFs, API]
-             |
-             v
-    [Object Store (S3)] ---> (Event) ---> [Message Queue (SQS)]
-                                                  |
-                                                  v
-                                       [Async Workers (Celery)]
-                                       1. Document OCR
-                                       2. LLM Data Extraction
-                                                  |
-                                                  v
-                                      [Rules Engine (Pydantic)]
-                                       /                     \
-                                 (Valid)                 (Invalid)
-                                   /                         \
-                                  v                           v
-                        [ DATABASE / DB STATE ]         [Review Queue]
-                                  ^                           |
-                                  |                           v
+    [Ingestion: Emails, PDFs, API]
+                 |
+                 v
+        [Object Store (S3)] ---> (Event) ---> [Message Queue (SQS)]
+                                                      |
+                                                      v
+                                           [Async Workers (Celery)]
+                                           1. Document OCR
+                                           2. LLM Data Extraction
+                                                      |
+                                                      v
+                                          [Rules Engine (Pydantic)]
+                                           /                     \
+                                     (Valid)                 (Invalid)
+                                       /                         \
+                                      v                           v
+                            [ DATABASE / DB STATE ]         [Review Queue]
+                                      ^                           |
+                                      |                           v
 ======================== API & AI AGENT ===========================
-                                  +------------------[HITL Dashboard]
-                                  |
-                   +--------------+--------------+
-                   | FastAPI Backend (/query)    |
-                   +--------------+--------------+
-                                  |
-                     [User Query + thread_id]
-                                  |
-                                  v
-                       +----------------------+
-       +-------------> |   Node: "chatbot"    | <-------------+
-       |               | (LLM bound to tools) |               |
-       |               +----------------------+               |
-[MemorySaver]            |                  |                 |
-(Checkpointer)           | END       (tools_condition)        |
-       |                 |                  |                 |
-       +-----------------+                  v                 |
-                         |       +----------------------+     |
-                         |       |    Node: "tools"     | ----+
-                         |       | (ToolNode execution) |
-                         |       +----------------------+
-                         |                  |
-                         v                  v
-                 [Final Response]     (Reads from DB)
-
-```
+                                      |                     [HITL Dashboard]
+                       +--------------+--------------+
+                       | FastAPI Backend (/query)    |
+                       +--------------+--------------+
+                                      |
+                         [User Query + thread_id]
+                                      |
+                                      v
+                        +----------------------------+
+                        |  Node: "input_guardrail"   | ---> (Block / Reject)
+                        | (PII masking, Injection)   |
+                        +----------------------------+
+                                      |
+                                      v
+                           +----------------------+
+           +-------------> |   Node: "chatbot"    | <-------------+
+           |               | (LLM bound to tools) |               |
+           |               +----------------------+               |
+    [MemorySaver]            |                  |                 |
+    (Checkpointer)           | END       (tools_condition)        |
+           |                 |                  |                 |
+           +-----------------+                  v                 |
+                             |       +----------------------+     |
+                             |       |    Node: "tools"     | ----+
+                             |       | (ToolNode execution) |
+                             |       +----------------------+
+                             |                  |
+                             v                  v
+                        +----------------------------+
+                        |  Node: "output_guardrail"  | (Reads from DB)
+                        | (Hallucination/Tone Check) |
+                        +----------------------------+
+                                      |
+                                      v
+                              [Final Response]
                  
 ## 2. Reliability
 
