@@ -37,7 +37,7 @@ pip install -r requirements.txt
 ### 4. Running the Application
 **Locally via Uvicorn:**
 ```bash
-uvicorn section-5.main:app --reload
+uvicorn section-5.app:app --reload
 ```
 Access the Swagger UI at: http://127.0.0.1:8000/docs
 
