@@ -58,8 +58,8 @@ graph_builder.add_conditional_edges("chatbot", tools_condition)
 graph_builder.add_edge("tools", "chatbot")
 
 # Προσθήκη Checkpointer για να δουλεύει το thread_id (μνήμη)
-memory = MemorySaver()
-app = graph_builder.compile(checkpointer=memory)
+#memory = MemorySaver()
+app = graph_builder.compile()
 
 if __name__ == "__main__":
     print("\n" + "="*50)

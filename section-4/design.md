@@ -1,6 +1,3 @@
-## 1. Architecture
-
-The architecture consists of an Ingestion Layer (Email/API gateways) that feeds raw documents into an Object Store (like AWS S3) and triggers an event queue (e.g., RabbitMQ or AWS SQS). A set of asynchronous worker nodes picks up these events, performs OCR for images/PDFs, and passes the extracted text to the LLM Extraction module. The resulting JSON is then evaluated by a Rules Engine (using Pydantic); strictly valid records are saved directly to a relational database (e.g., PostgreSQL), while failures are routed to a separate queue. Finally, a FastAPI backend exposes the stored, validated data to downstream systems and internal dashboards.
 # Section 4: System Design & Critical Thinking
 
 ## 1. Architecture

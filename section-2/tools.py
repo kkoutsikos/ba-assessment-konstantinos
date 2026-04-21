@@ -76,22 +76,26 @@ def find_top_customers(limit: int = 3) -> str:
 
 @tool
 def get_overdue_invoices(current_date_str: str) -> str:
-    """Finds invoices that are past their due date. Expects date format: YYYY-MM-DD."""
+    """Finds invoices that are past their due date AND are not paid. Expects date format: YYYY-MM-DD."""
     overdue = []
     try:
         current_date = datetime.datetime.strptime(current_date_str, "%Y-%m-%d")
         for inv in INVOICES:
             inv_date_str = inv.get("date")
+            status = inv.get("status", "").lower()
+            
             if inv_date_str:
                 inv_date = datetime.datetime.strptime(inv_date_str, "%Y-%m-%d")
-                if inv_date < current_date:
+                
+                
+                if inv_date < current_date and status != "paid":
                     overdue.append(f"ID: {inv.get('id')} ({inv.get('customer')})")
     except ValueError:
         return "Error: Could not parse dates. Please ensure dates are in YYYY-MM-DD format."
     
     if not overdue:
-        return "No overdue invoices found for the specified date."
-    return "Overdue invoices: " + ", ".join(overdue)
+        return "No unpaid overdue invoices found for the specified date."
+    return "Overdue unpaid invoices: " + ", ".join(overdue)
 
 @tool
 def detect_anomaly(customer: str, current_amount: float) -> str:

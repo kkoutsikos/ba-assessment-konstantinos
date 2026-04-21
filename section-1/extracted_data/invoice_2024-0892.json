@@ -1,17 +1,17 @@
 {
   "invoice_number": "2024-0892",
-  "date": "1503-04-24",
+  "date": "15.03.2024",
   "seller": {
     "name": "TechSolutions GmbH",
     "street": "Musterstrasse 42",
-    "zip_code": "10115 Berlin",
+    "zip_code": "10115",
     "city": "Berlin",
     "vat_id": "DE123456789"
   },
   "buyer": {
     "name": "Digital Services AG",
     "street": "Hauptweg 7",
-    "zip_code": "80331 Munchen",
+    "zip_code": "80331",
     "city": "Munchen",
     "vat_id": "DE987654321"
   },
